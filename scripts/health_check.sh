@@ -149,12 +149,14 @@ check_service "Alertmanager"  "sentinelops-alertmanager"  "$ALERTMANAGER_URL"  "
 print_header "Prometheus Scrape Targets"
 
 if check_http "$PROMETHEUS_URL" "/-/ready"; then
-    targets_json=$(curl -sf --max-time 5 "$PROMETHEUS_URL/api/v1/targets" 2>/dev/null || echo "")
+    targets_json=$(curl -sf --max-time 5 "$PROMETHEUS_URL/api/v1/targets" 2>/dev/null || true)
     if [[ -n "$targets_json" ]]; then
-        up_count=$(echo "$targets_json"   | grep -o '"health":"up"'   | wc -l)
+        set +e
+        up_count=$(echo "$targets_json" | grep -o '"health":"up"' | wc -l)
         down_count=$(echo "$targets_json" | grep -o '"health":"down"' | wc -l)
+        set -e
         echo -e "  ${GREEN}ok${NC}  Targets UP:   ${GREEN}${up_count}${NC}"
-        if [[ "$down_count" -gt 0 ]]; then
+        if [ "${down_count:-0}" -gt 0 ]; then
             echo -e "  ${RED}ERR${NC} Targets DOWN: ${RED}${down_count}${NC}"
         else
             echo -e "  ${GREEN}ok${NC}  Targets DOWN: ${GREEN}0${NC}"
