@@ -198,11 +198,34 @@ nano .env
 | `ALERTMANAGER_PORT` | `9093` | Host port for Alertmanager |
 | `NODE_EXPORTER_PORT` | `9100` | Host port for Node Exporter |
 | `PROMETHEUS_RETENTION_TIME` | `15d` | How long metrics are kept |
-| `SMTP_HOST` | *(blank)* | Optional: SMTP server for email alerts |
-| `SMTP_PASSWORD` | *(blank)* | Optional: SMTP password |
+| `ALERT_EMAIL_TO` | *(blank)* | Destination email address for alert notifications |
+| `SMTP_HOST` | *(blank)* | SMTP server hostname (e.g. `smtp.gmail.com`) |
+| `SMTP_PORT` | `587` | SMTP port (e.g. `587` for STARTTLS) |
+| `SMTP_USERNAME` | *(blank)* | SMTP account username or email address |
+| `SMTP_PASSWORD` | *(blank)* | SMTP account password or 16-character App Password |
+| `SMTP_FROM` | *(blank)* | Sender email address (e.g. `alerts@yourdomain.com`) |
 | `SLACK_WEBHOOK_URL` | *(blank)* | Optional: Slack webhook for alerts |
 
-> **Important:** If `SMTP_*` variables are left empty, email alerting is simply disabled. The stack starts correctly either way.
+> **Important:** If `SMTP_*` variables are left empty, email alerting remains gracefully disabled, and alerts route exclusively to local webhooks. The stack starts and runs reliably in either mode.
+
+### How to Enable Email Notifications:
+
+1. Configure your SMTP settings in `.env`:
+   ```bash
+   ALERT_EMAIL_TO=oncall@example.com
+   SMTP_HOST=smtp.gmail.com
+   SMTP_PORT=587
+   SMTP_USERNAME=alerts@example.com
+   SMTP_PASSWORD=your-16-char-app-password
+   SMTP_FROM=alerts@example.com
+   ```
+2. Render and apply the updated Alertmanager configuration:
+   ```bash
+   bash scripts/generate_alertmanager_config.sh
+   curl -X POST http://localhost:9093/-/reload
+   ```
+3. Critical alerts (`InstanceDown`, `CriticalCpuUsage`, `CriticalMemoryUsage`, `CriticalDiskSpace`) are emailed immediately to `ALERT_EMAIL_TO` with repeat intervals of 1h.
+4. Warning alerts (`HighCpuUsage`, `HighMemoryUsage`, `LowDiskSpace`, etc.) are grouped and emailed with repeat intervals of 4h.
 
 ### Step 3 — Verify `.env` is gitignored
 

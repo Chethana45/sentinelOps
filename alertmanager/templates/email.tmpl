@@ -1,0 +1,62 @@
+{{ define "email.sentinelops.html" }}
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f6f8fa; margin: 0; padding: 20px; }
+    .card { background-color: #ffffff; border-radius: 8px; border: 1px solid #d0d7de; max-width: 600px; margin: 0 auto; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .header { padding: 16px 20px; color: #ffffff; font-weight: bold; font-size: 18px; }
+    .header.critical { background-color: #cf222e; }
+    .header.warning { background-color: #9a6700; }
+    .header.resolved { background-color: #1a7f37; }
+    .content { padding: 20px; color: #24292f; }
+    .alert-box { border-left: 4px solid #d0d7de; padding: 12px 16px; margin-bottom: 16px; background-color: #f6f8fa; border-radius: 0 4px 4px 0; }
+    .alert-box.critical { border-left-color: #cf222e; }
+    .alert-box.warning { border-left-color: #9a6700; }
+    .meta-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+    .meta-table td { padding: 4px 0; }
+    .meta-table td.label { width: 100px; color: #57606a; font-weight: 600; }
+    .footer { padding: 12px 20px; font-size: 12px; color: #57606a; background-color: #f6f8fa; border-top: 1px solid #d0d7de; text-align: center; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="header {{ if eq .Status "resolved" }}resolved{{ else }}{{ .GroupLabels.severity }}{{ end }}">
+      {{ if eq .Status "resolved" }}
+        [RESOLVED] {{ .GroupLabels.alertname }}
+      {{ else }}
+        [{{ .GroupLabels.severity | toUpper }}] {{ .GroupLabels.alertname }}
+      {{ end }}
+    </div>
+    <div class="content">
+      <p style="margin-top: 0;"><strong>SentinelOps Alerting System</strong> detected the following alert condition:</p>
+
+      {{ range .Alerts }}
+      <div class="alert-box {{ .Labels.severity }}">
+        <div style="font-size: 15px; font-weight: 600; margin-bottom: 6px;">
+          {{ .Annotations.summary }}
+        </div>
+        <div style="font-size: 13px; color: #57606a; margin-bottom: 8px;">
+          {{ .Annotations.description }}
+        </div>
+        <table class="meta-table">
+          <tr><td class="label">Instance:</td><td>{{ .Labels.instance }}</td></tr>
+          <tr><td class="label">Job:</td><td>{{ .Labels.job }}</td></tr>
+          <tr><td class="label">Severity:</td><td><strong>{{ .Labels.severity | toUpper }}</strong></td></tr>
+          <tr><td class="label">Started:</td><td>{{ .StartsAt.Format "2006-01-02 15:04:05 UTC" }}</td></tr>
+        </table>
+      </div>
+      {{ end }}
+
+      <p style="font-size: 13px; color: #57606a;">
+        View in Grafana: <a href="http://localhost:3000" style="color: #0969da;">Dashboard</a> |
+        Alertmanager: <a href="http://localhost:9093" style="color: #0969da;">Alertmanager UI</a>
+      </p>
+    </div>
+    <div class="footer">
+      SentinelOps Server Monitoring & Alerting Stack &bull; Automated System Notification
+    </div>
+  </div>
+</body>
+</html>
+{{ end }}

@@ -178,6 +178,7 @@ services:
       - '--web.external-url=http://localhost:${ALERTMANAGER_PORT:-9093}'
     volumes:
       - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - ./alertmanager/templates:/etc/alertmanager/templates:ro
       - alertmanager_data:/alertmanager
     ports:
       - "${ALERTMANAGER_PORT:-9093}:9093"
