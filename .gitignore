@@ -6,8 +6,9 @@
 # SECRETS — never commit these
 # ---------------------------------------------------------------------------
 .env
-.env.*
-!.env.example        # .env.example IS committed (contains only placeholders)
+.env.local
+.env.*.local
+!.env.example
 
 # ---------------------------------------------------------------------------
 # Runtime data — generated at container startup, not part of the codebase
