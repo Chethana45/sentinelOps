@@ -1,0 +1,194 @@
+# =============================================================================
+# SentinelOps — Docker Compose
+# =============================================================================
+# All credentials and ports are read from the .env file in this directory.
+# Copy .env.example → .env and fill in your values before running.
+#
+# Start:   docker compose up -d
+# Stop:    docker compose down
+# Logs:    docker compose logs -f
+# Status:  docker compose ps
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Volumes — Docker-managed persistent storage.
+# Data survives container restarts and "docker compose down".
+# Only "docker compose down --volumes" deletes them.
+# ---------------------------------------------------------------------------
+volumes:
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  alertmanager_data:
+    driver: local
+
+# ---------------------------------------------------------------------------
+# Network — private bridge network shared by all services.
+# Containers talk to each other by service name (e.g. "prometheus:9090").
+# ---------------------------------------------------------------------------
+networks:
+  monitoring:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+
+# ---------------------------------------------------------------------------
+# Services
+# ---------------------------------------------------------------------------
+services:
+
+  # --------------------------------------------------------------------------
+  # Node Exporter  — system metrics exporter
+  # --------------------------------------------------------------------------
+  # Reads hardware & OS data from /proc and /sys (Linux kernel interfaces)
+  # and exposes them as Prometheus-scrapable metrics on port 9100.
+  # Node Exporter starts FIRST because Prometheus depends on it being healthy.
+  # --------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.7.0
+    container_name: sentinelops-node-exporter
+    restart: unless-stopped
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      # Exclude virtual/container filesystems from disk metrics
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    volumes:
+      - /proc:/host/proc:ro      # process info
+      - /sys:/host/sys:ro        # kernel/device info
+      - /:/rootfs:ro             # root filesystem (disk metrics)
+    ports:
+      - "${NODE_EXPORTER_PORT:-9100}:9100"
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9100/metrics"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    labels:
+      - "com.sentinelops.service=node-exporter"
+      - "com.sentinelops.description=System hardware and OS metrics"
+
+  # --------------------------------------------------------------------------
+  # Prometheus  — metrics collection and time-series database
+  # --------------------------------------------------------------------------
+  # Scrapes targets every 15 s, stores data for ${PROMETHEUS_RETENTION_TIME}.
+  # Hot-reload enabled: POST http://localhost:9090/-/reload to apply config
+  # changes without restarting the container.
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v2.51.0
+    container_name: sentinelops-prometheus
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=${PROMETHEUS_RETENTION_TIME:-15d}'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--web.enable-lifecycle'    # enables POST /-/reload
+      - '--web.enable-admin-api'
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    ports:
+      - "${PROMETHEUS_PORT:-9090}:9090"
+    networks:
+      - monitoring
+    depends_on:
+      node-exporter:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    labels:
+      - "com.sentinelops.service=prometheus"
+      - "com.sentinelops.description=Metrics collection and storage"
+
+  # --------------------------------------------------------------------------
+  # Grafana  — dashboards and visualizations
+  # --------------------------------------------------------------------------
+  # Credentials come from .env (GRAFANA_ADMIN_USER / GRAFANA_ADMIN_PASSWORD).
+  # Provisioning mounts auto-configure the Prometheus datasource and load
+  # dashboards on every startup — no manual UI clicks needed.
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:10.3.1
+    container_name: sentinelops-grafana
+    restart: unless-stopped
+    environment:
+      # Credentials — sourced from .env, never hardcoded here
+      - GF_SECURITY_ADMIN_USER=${GRAFANA_ADMIN_USER:-admin}
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set in .env}
+      # Disable public self-registration
+      - GF_USERS_ALLOW_SIGN_UP=false
+      # Server
+      - GF_SERVER_DOMAIN=localhost
+      - GF_SERVER_ROOT_URL=http://localhost:${GRAFANA_PORT:-3000}
+      # Anonymous access — disabled (require login)
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+      # Paths (must match volume mounts)
+      - GF_PATHS_PROVISIONING=/etc/grafana/provisioning
+      - GF_PATHS_DATA=/var/lib/grafana
+      - GF_PATHS_LOGS=/var/log/grafana
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "${GRAFANA_PORT:-3000}:3000"
+    networks:
+      - monitoring
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    labels:
+      - "com.sentinelops.service=grafana"
+      - "com.sentinelops.description=Metrics visualization and dashboards"
+
+  # --------------------------------------------------------------------------
+  # Alertmanager  — alert routing and notification
+  # --------------------------------------------------------------------------
+  # Receives firing alerts from Prometheus and routes them to receivers
+  # (webhook, email, Slack, PagerDuty, etc.).
+  # Configure receivers in alertmanager/alertmanager.yml.
+  # --------------------------------------------------------------------------
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    container_name: sentinelops-alertmanager
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+      - '--web.external-url=http://localhost:${ALERTMANAGER_PORT:-9093}'
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    ports:
+      - "${ALERTMANAGER_PORT:-9093}:9093"
+    networks:
+      - monitoring
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:9093/-/healthy"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    labels:
+      - "com.sentinelops.service=alertmanager"
+      - "com.sentinelops.description=Alert routing and notifications"

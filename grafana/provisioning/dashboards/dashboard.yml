@@ -1,0 +1,26 @@
+# =============================================================================
+# Grafana Dashboard Provisioning
+# =============================================================================
+# This file tells Grafana where to load dashboard JSON files from.
+# We place our dashboard JSON files in /var/lib/grafana/dashboards/
+# (mapped to ./grafana/dashboards/ on the host).
+# =============================================================================
+
+apiVersion: 1
+
+providers:
+
+  - name: 'SentinelOps'          # Provider name (shown in Grafana UI)
+    orgId: 1                      # Organization ID (default is 1)
+    folder: 'SentinelOps'         # Dashboard folder name in Grafana UI
+    folderUid: 'sentinelops'
+    type: file
+    disableDeletion: false        # Allow deleting dashboards from UI
+    editable: true                # Allow editing dashboards from UI
+    updateIntervalSeconds: 30     # Check for new/updated dashboard files every 30s
+    allowUiUpdates: true
+
+    options:
+      # Path INSIDE the Grafana container where dashboards are stored
+      path: /var/lib/grafana/dashboards
+      foldersFromFilesStructure: false

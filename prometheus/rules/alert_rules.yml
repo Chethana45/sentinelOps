@@ -1,0 +1,305 @@
+# =============================================================================
+# Prometheus Alerting Rules
+# =============================================================================
+# Alert rules define WHEN to fire an alert. Each rule has:
+#   - alert:       A name for the alert
+#   - expr:        A PromQL expression that evaluates to true/false
+#   - for:         How long the condition must be true before firing
+#   - labels:      Metadata attached to the alert (severity, team, etc.)
+#   - annotations: Human-readable messages sent with the alert
+#
+# PromQL (Prometheus Query Language) is how we query metrics.
+# Example: node_cpu_seconds_total is a metric; rate(...)[5m] is a function.
+# =============================================================================
+
+groups:
+
+  # ==========================================================================
+  # Group: Node Health
+  # Basic checks that the monitored host is alive and reachable
+  # ==========================================================================
+  - name: node_health
+    # How often to evaluate rules in this group
+    interval: 30s
+    rules:
+
+      # ------------------------------------------------------------------------
+      # Alert: InstanceDown
+      # Fires when a monitored target stops responding to scrapes.
+      # "up" is a special metric Prometheus sets to 1 if a target is reachable,
+      # 0 if it's down.
+      # ------------------------------------------------------------------------
+      - alert: InstanceDown
+        expr: up == 0
+        for: 1m          # Must be down for 1 full minute to avoid flapping
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "Instance {{ $labels.instance }} is DOWN"
+          description: >
+            The target {{ $labels.instance }} (job: {{ $labels.job }})
+            has been unreachable for more than 1 minute.
+            Check if the service is running and the network is accessible.
+          runbook_url: "https://github.com/youruser/sentinelops/wiki/InstanceDown"
+
+      # ------------------------------------------------------------------------
+      # Alert: NodeExporterDown
+      # Specific alert for when Node Exporter itself goes down.
+      # Without Node Exporter we have no system metrics.
+      # ------------------------------------------------------------------------
+      - alert: NodeExporterDown
+        expr: absent(up{job="node-exporter"})
+        for: 1m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "Node Exporter is DOWN"
+          description: >
+            Node Exporter is not responding. System metrics (CPU, memory, disk)
+            are not being collected. Investigate the node-exporter container.
+
+  # ==========================================================================
+  # Group: CPU Alerts
+  # ==========================================================================
+  - name: cpu_alerts
+    interval: 30s
+    rules:
+
+      # ------------------------------------------------------------------------
+      # Alert: HighCpuUsage
+      # Fires when average CPU usage across all cores exceeds 80% for 5 minutes.
+      #
+      # How this PromQL works:
+      #   node_cpu_seconds_total - counts time CPU spent in each mode
+      #   rate(...[5m])          - calculates per-second rate over 5 minutes
+      #   {mode="idle"}          - filter to the "idle" mode only
+      #   avg by (instance)      - average across all CPU cores
+      #   * 100                  - convert to percentage
+      #   100 - ...              - idle% subtracted from 100 = usage%
+      # ------------------------------------------------------------------------
+      - alert: HighCpuUsage
+        expr: >
+          100 - (avg by (instance) (
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
+          ) * 100) > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "High CPU usage on {{ $labels.instance }}"
+          description: >
+            CPU usage is {{ $value | printf "%.1f" }}% on {{ $labels.instance }},
+            exceeding the 80% threshold for more than 5 minutes.
+            Investigate which processes are consuming CPU.
+          runbook_url: "https://github.com/youruser/sentinelops/wiki/HighCPU"
+
+      # ------------------------------------------------------------------------
+      # Alert: CriticalCpuUsage
+      # More severe: CPU above 95% for 2 minutes
+      # ------------------------------------------------------------------------
+      - alert: CriticalCpuUsage
+        expr: >
+          100 - (avg by (instance) (
+            rate(node_cpu_seconds_total{mode="idle"}[5m])
+          ) * 100) > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "CRITICAL CPU usage on {{ $labels.instance }}"
+          description: >
+            CPU usage is {{ $value | printf "%.1f" }}% on {{ $labels.instance }},
+            exceeding the CRITICAL 95% threshold for more than 2 minutes.
+            Immediate action required!
+
+  # ==========================================================================
+  # Group: Memory Alerts
+  # ==========================================================================
+  - name: memory_alerts
+    interval: 30s
+    rules:
+
+      # ------------------------------------------------------------------------
+      # Alert: HighMemoryUsage
+      # Fires when memory usage exceeds 85%.
+      #
+      # How this PromQL works:
+      #   node_memory_MemTotal_bytes     - total physical RAM
+      #   node_memory_MemAvailable_bytes - RAM available (free + reclaimable)
+      #   Subtracting and dividing gives % of memory actually used.
+      # ------------------------------------------------------------------------
+      - alert: HighMemoryUsage
+        expr: >
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "High memory usage on {{ $labels.instance }}"
+          description: >
+            Memory usage is {{ $value | printf "%.1f" }}% on {{ $labels.instance }},
+            exceeding the 85% threshold for more than 5 minutes.
+            Consider increasing RAM or investigating memory leaks.
+
+      # ------------------------------------------------------------------------
+      # Alert: CriticalMemoryUsage
+      # ------------------------------------------------------------------------
+      - alert: CriticalMemoryUsage
+        expr: >
+          (1 - (node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)) * 100 > 95
+        for: 2m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "CRITICAL memory usage on {{ $labels.instance }}"
+          description: >
+            Memory usage is {{ $value | printf "%.1f" }}% on {{ $labels.instance }}.
+            The system may soon start swapping or OOM-killing processes!
+
+      # ------------------------------------------------------------------------
+      # Alert: SwapUsageHigh
+      # High swap usage indicates RAM pressure
+      # ------------------------------------------------------------------------
+      - alert: SwapUsageHigh
+        expr: >
+          (1 - (node_memory_SwapFree_bytes / node_memory_SwapTotal_bytes)) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "High swap usage on {{ $labels.instance }}"
+          description: >
+            Swap usage is {{ $value | printf "%.1f" }}% on {{ $labels.instance }}.
+            High swap usage indicates RAM is under pressure and performance
+            may be degraded.
+
+  # ==========================================================================
+  # Group: Disk Alerts
+  # ==========================================================================
+  - name: disk_alerts
+    interval: 60s
+    rules:
+
+      # ------------------------------------------------------------------------
+      # Alert: LowDiskSpace
+      # Fires when a filesystem is more than 80% full.
+      #
+      # How this PromQL works:
+      #   node_filesystem_size_bytes  - total size of the filesystem
+      #   node_filesystem_free_bytes  - free space remaining
+      #   fstype!~"tmpfs|devtmpfs"   - exclude virtual/temp filesystems
+      # ------------------------------------------------------------------------
+      - alert: LowDiskSpace
+        expr: >
+          (1 - (node_filesystem_free_bytes{fstype!~"tmpfs|devtmpfs|overlay"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|devtmpfs|overlay"})
+          ) * 100 > 80
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "Low disk space on {{ $labels.instance }}"
+          description: >
+            Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }}
+            is {{ $value | printf "%.1f" }}% full.
+            Free up space to avoid service disruption.
+
+      # ------------------------------------------------------------------------
+      # Alert: CriticalDiskSpace
+      # ------------------------------------------------------------------------
+      - alert: CriticalDiskSpace
+        expr: >
+          (1 - (node_filesystem_free_bytes{fstype!~"tmpfs|devtmpfs|overlay"}
+                / node_filesystem_size_bytes{fstype!~"tmpfs|devtmpfs|overlay"})
+          ) * 100 > 90
+        for: 2m
+        labels:
+          severity: critical
+          team: ops
+        annotations:
+          summary: "CRITICAL disk space on {{ $labels.instance }}"
+          description: >
+            Filesystem {{ $labels.mountpoint }} on {{ $labels.instance }}
+            is {{ $value | printf "%.1f" }}% full. CRITICAL threshold exceeded!
+            Immediate action required to prevent service failure.
+
+      # ------------------------------------------------------------------------
+      # Alert: DiskWillFillIn24Hours
+      # Predicts disk fill using linear regression over 6 hours
+      # ------------------------------------------------------------------------
+      - alert: DiskWillFillIn24Hours
+        expr: >
+          predict_linear(
+            node_filesystem_free_bytes{fstype!~"tmpfs|devtmpfs|overlay"}[6h],
+            24 * 3600
+          ) < 0
+        for: 30m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "Disk on {{ $labels.instance }} will fill within 24 hours"
+          description: >
+            Based on the current growth rate, filesystem {{ $labels.mountpoint }}
+            on {{ $labels.instance }} will run out of space within 24 hours.
+
+  # ==========================================================================
+  # Group: Network Alerts
+  # ==========================================================================
+  - name: network_alerts
+    interval: 30s
+    rules:
+
+      # ------------------------------------------------------------------------
+      # Alert: HighNetworkReceive
+      # Fires when inbound traffic exceeds 100 MB/s
+      # ------------------------------------------------------------------------
+      - alert: HighNetworkReceive
+        expr: >
+          rate(node_network_receive_bytes_total{device!~"lo|docker.*|br-.*|veth.*"}[5m])
+          / 1024 / 1024 > 100
+        for: 5m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "High network receive on {{ $labels.instance }}"
+          description: >
+            Interface {{ $labels.device }} on {{ $labels.instance }}
+            is receiving {{ $value | printf "%.1f" }} MB/s.
+            This may indicate a DDoS or large data transfer.
+
+  # ==========================================================================
+  # Group: System Load Alerts
+  # ==========================================================================
+  - name: system_load_alerts
+    interval: 30s
+    rules:
+
+      # ------------------------------------------------------------------------
+      # Alert: HighSystemLoad
+      # Load average > number of CPU cores means the system is overloaded
+      # ------------------------------------------------------------------------
+      - alert: HighSystemLoad
+        expr: >
+          node_load15 / count without(cpu, mode)(
+            node_cpu_seconds_total{mode="idle"}
+          ) > 1.5
+        for: 10m
+        labels:
+          severity: warning
+          team: ops
+        annotations:
+          summary: "High system load on {{ $labels.instance }}"
+          description: >
+            15-minute load average is {{ $value | printf "%.2f" }} per CPU on
+            {{ $labels.instance }}, exceeding 1.5x the number of cores.
+            The system is significantly overloaded.

@@ -1,0 +1,174 @@
+# =============================================================================
+# Alertmanager Configuration
+# =============================================================================
+# Alertmanager receives alerts from Prometheus and routes them to the right
+# notification channels (email, Slack, PagerDuty, etc.).
+#
+# Key concepts:
+#   - route:     Decision tree: which alerts go where
+#   - receiver:  A notification destination (email, Slack, webhook, etc.)
+#   - inhibit:   Suppress lower-priority alerts when a higher one fires
+#   - group_by:  Batch related alerts together into one notification
+#   - repeat:    How often to re-send an active alert
+# =============================================================================
+
+global:
+  # How long to wait before re-sending a resolved alert notification
+  resolve_timeout: 5m
+
+  # SMTP settings for email alerts (configure with your email provider)
+  # IMPORTANT: Use environment variables or secrets management in production!
+  # smtp_smarthost: 'smtp.gmail.com:587'
+  # smtp_from: 'alerts@yourcompany.com'
+  # smtp_auth_username: 'alerts@yourcompany.com'
+  # smtp_auth_password: 'your-app-password'
+  # smtp_require_tls: true
+
+# ---------------------------------------------------------------------------
+# Templates
+# ---------------------------------------------------------------------------
+# Custom notification templates (for formatting alert messages)
+# ---------------------------------------------------------------------------
+# templates:
+#   - '/etc/alertmanager/templates/*.tmpl'
+
+# ---------------------------------------------------------------------------
+# Route - Alert Routing Tree
+# ---------------------------------------------------------------------------
+# Alerts flow through this tree from top to bottom.
+# The FIRST matching route wins (unless continue: true is set).
+# ---------------------------------------------------------------------------
+route:
+  # Default receiver: catches any alert that doesn't match a specific route
+  receiver: 'sentinelops-webhook'
+
+  # Group alerts by these labels so related alerts are batched together.
+  # Instead of 50 individual alerts, you get 1 grouped notification.
+  group_by: ['alertname', 'severity', 'instance']
+
+  # Wait up to 30 seconds for more alerts before sending a grouped notification
+  group_wait: 30s
+
+  # After the first notification, wait 5 minutes before sending another
+  # for the same group
+  group_interval: 5m
+
+  # If an alert is still firing, re-send notification every 4 hours
+  repeat_interval: 4h
+
+  # --------------------------------------------------------------------------
+  # Child Routes - Specific routing rules
+  # --------------------------------------------------------------------------
+  routes:
+
+    # Route CRITICAL alerts immediately with shorter intervals
+    - match:
+        severity: critical
+      receiver: 'sentinelops-critical'
+      group_wait: 10s           # Don't wait long for critical alerts
+      group_interval: 1m
+      repeat_interval: 1h       # Re-alert every hour while still firing
+      continue: false           # Don't check further routes
+
+    # Route WARNING alerts to the standard channel
+    - match:
+        severity: warning
+      receiver: 'sentinelops-webhook'
+      group_wait: 60s
+      group_interval: 10m
+      repeat_interval: 6h
+
+    # Route disk-related alerts together
+    - match_re:
+        alertname: '.*(Disk|disk).*'
+      receiver: 'sentinelops-webhook'
+      group_by: ['alertname', 'mountpoint', 'instance']
+
+# ---------------------------------------------------------------------------
+# Inhibition Rules
+# ---------------------------------------------------------------------------
+# Suppress (silence) less important alerts when more important ones fire.
+# Example: If the whole instance is down (InstanceDown), suppress CPU/memory
+# alerts for that same instance (they're expected when it's down).
+# ---------------------------------------------------------------------------
+inhibit_rules:
+
+  - source_match:
+      alertname: 'InstanceDown'
+      severity: 'critical'
+    target_match_re:
+      alertname: '.*(Cpu|Memory|Disk|Network|Load).*'
+    # Only inhibit if the instance label matches
+    equal: ['instance']
+
+  - source_match:
+      severity: 'critical'
+    target_match:
+      severity: 'warning'
+    # Only inhibit same alert type on same instance
+    equal: ['alertname', 'instance']
+
+# ---------------------------------------------------------------------------
+# Receivers
+# ---------------------------------------------------------------------------
+# Receivers define HOW to send notifications.
+# We use a webhook receiver pointing to a simple logging endpoint.
+# In production, configure email, Slack, PagerDuty, etc.
+# ---------------------------------------------------------------------------
+receivers:
+
+  # --------------------------------------------------------------------------
+  # Default receiver: webhook for all alerts
+  # We point this to a local endpoint that logs the alert payload.
+  # Replace this URL with your actual notification service.
+  # --------------------------------------------------------------------------
+  - name: 'sentinelops-webhook'
+    webhook_configs:
+      - url: 'http://localhost:5001/alerts'  # Our custom alert receiver script
+        send_resolved: true
+        http_config:
+          follow_redirects: true
+        # Custom message template (uses Go templating)
+        # title: '{{ template "custom_title" . }}'
+
+  # --------------------------------------------------------------------------
+  # Critical receiver: for high-severity alerts
+  # In production, this would page on-call engineers.
+  # --------------------------------------------------------------------------
+  - name: 'sentinelops-critical'
+    webhook_configs:
+      - url: 'http://localhost:5001/alerts/critical'
+        send_resolved: true
+
+  # --------------------------------------------------------------------------
+  # Example email receiver (uncomment and configure to use)
+  # --------------------------------------------------------------------------
+  # - name: 'email-alerts'
+  #   email_configs:
+  #     - to: 'oncall@yourcompany.com'
+  #       from: 'alertmanager@yourcompany.com'
+  #       smarthost: 'smtp.gmail.com:587'
+  #       auth_username: 'alertmanager@yourcompany.com'
+  #       auth_password: 'your-app-password'
+  #       send_resolved: true
+  #       headers:
+  #         subject: '[{{ .Status | toUpper }}] {{ .GroupLabels.alertname }}'
+
+  # --------------------------------------------------------------------------
+  # Example Slack receiver (uncomment and configure to use)
+  # --------------------------------------------------------------------------
+  # - name: 'slack-alerts'
+  #   slack_configs:
+  #     - api_url: 'https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK'
+  #       channel: '#alerts'
+  #       username: 'SentinelOps'
+  #       icon_emoji: ':rotating_light:'
+  #       send_resolved: true
+  #       title: '{{ .GroupLabels.alertname }}'
+  #       text: |
+  #         {{ range .Alerts }}
+  #         *Alert:* {{ .Annotations.summary }}
+  #         *Description:* {{ .Annotations.description }}
+  #         *Severity:* {{ .Labels.severity }}
+  #         *Instance:* {{ .Labels.instance }}
+  #         {{ end }}

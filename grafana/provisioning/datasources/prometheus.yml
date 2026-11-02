@@ -1,0 +1,32 @@
+# =============================================================================
+# Grafana Datasource Provisioning
+# =============================================================================
+# Grafana "provisioning" lets us pre-configure data sources via files,
+# so we don't have to manually add them through the UI every time.
+# This file tells Grafana: "Connect to Prometheus at this URL."
+# =============================================================================
+
+apiVersion: 1
+
+# List of data sources to provision on startup
+datasources:
+
+  - name: Prometheus
+    type: prometheus
+    # "proxy" means Grafana's backend makes the request (not the browser)
+    access: proxy
+    url: http://prometheus:9090   # Docker service name resolves automatically
+    isDefault: true               # This is the default datasource for new panels
+    editable: true                # Allow editing via UI (useful for development)
+
+    # JSON data: extra settings specific to the Prometheus datasource
+    jsonData:
+      # How often Grafana suggests reloading dashboard data
+      timeInterval: "15s"
+      # Enable Prometheus exemplars (for tracing integration)
+      exemplarTraceIdDestinations: []
+      # Use POST method for queries (handles long queries better)
+      httpMethod: POST
+
+    # Version for tracking changes
+    version: 1

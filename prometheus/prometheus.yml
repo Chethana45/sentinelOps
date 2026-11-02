@@ -1,0 +1,102 @@
+# =============================================================================
+# Prometheus Configuration
+# =============================================================================
+# This is Prometheus's main configuration file.
+#
+# Key concepts:
+#   - scrape_interval: How often Prometheus pulls metrics from targets
+#   - scrape_configs:  Which services to collect metrics from (targets)
+#   - rule_files:      Where to find alerting rules
+#   - alerting:        Where to send fired alerts (Alertmanager)
+# =============================================================================
+
+global:
+  # How often to collect metrics from each target (every 15 seconds)
+  scrape_interval: 15s
+
+  # How often to evaluate alerting rules
+  evaluation_interval: 15s
+
+  # Timeout for each scrape request
+  scrape_timeout: 10s
+
+  # Labels added to ALL metrics collected by this Prometheus instance
+  # Useful when you have multiple Prometheus servers (federation)
+  external_labels:
+    monitor: 'sentinelops'
+    environment: 'development'
+
+# ---------------------------------------------------------------------------
+# Alerting Configuration
+# ---------------------------------------------------------------------------
+# Tell Prometheus where Alertmanager is running so it can send alerts there.
+# ---------------------------------------------------------------------------
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets:
+            - alertmanager:9093    # Docker service name resolves automatically
+
+# ---------------------------------------------------------------------------
+# Rule Files
+# ---------------------------------------------------------------------------
+# Prometheus loads alerting and recording rules from these files.
+# We use a glob pattern to load ALL .yml files inside the rules/ directory.
+# ---------------------------------------------------------------------------
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+# ---------------------------------------------------------------------------
+# Scrape Configurations
+# ---------------------------------------------------------------------------
+# Each job defines a group of targets to scrape metrics from.
+# ---------------------------------------------------------------------------
+scrape_configs:
+
+  # --------------------------------------------------------------------------
+  # Job: prometheus
+  # Prometheus scrapes its OWN metrics (meta-monitoring!)
+  # Check http://localhost:9090/metrics to see what it exposes
+  # --------------------------------------------------------------------------
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          service: 'prometheus'
+          component: 'monitoring'
+
+  # --------------------------------------------------------------------------
+  # Job: node-exporter
+  # Collect system metrics: CPU, memory, disk, network, etc.
+  # The "node-exporter" hostname resolves via Docker's internal DNS.
+  # --------------------------------------------------------------------------
+  - job_name: 'node-exporter'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['node-exporter:9100']
+        labels:
+          service: 'node-exporter'
+          component: 'system'
+          host: 'sentinelops-host'
+
+  # --------------------------------------------------------------------------
+  # Job: alertmanager
+  # Monitor Alertmanager itself (is it up? how many alerts?)
+  # --------------------------------------------------------------------------
+  - job_name: 'alertmanager'
+    static_configs:
+      - targets: ['alertmanager:9093']
+        labels:
+          service: 'alertmanager'
+          component: 'monitoring'
+
+  # --------------------------------------------------------------------------
+  # Job: grafana
+  # Monitor Grafana itself
+  # --------------------------------------------------------------------------
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+        labels:
+          service: 'grafana'
+          component: 'monitoring'
