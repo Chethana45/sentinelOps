@@ -189,17 +189,17 @@ groups:
 
       # ------------------------------------------------------------------------
       # Alert: LowDiskSpace
-      # Fires when a filesystem is more than 80% full.
+      # Fires when root filesystem (/) is more than 80% full for 5 minutes.
       #
-      # How this PromQL works:
-      #   node_filesystem_size_bytes  - total size of the filesystem
-      #   node_filesystem_free_bytes  - free space remaining
-      #   fstype!~"tmpfs|devtmpfs"   - exclude virtual/temp filesystems
+      # Filters:
+      #   mountpoint="/"                           - monitors only the root filesystem
+      #   fstype!~"tmpfs|devtmpfs|overlay"        - ignores temporary/virtual mounts
+      #   device!=""                               - ensures valid block device
       # ------------------------------------------------------------------------
       - alert: LowDiskSpace
         expr: >
-          (1 - (node_filesystem_free_bytes{fstype!~"tmpfs|devtmpfs|overlay"}
-                / node_filesystem_size_bytes{fstype!~"tmpfs|devtmpfs|overlay"})
+          (1 - (node_filesystem_free_bytes{mountpoint="/", fstype!~"tmpfs|devtmpfs|overlay", device!=""}
+                / node_filesystem_size_bytes{mountpoint="/", fstype!~"tmpfs|devtmpfs|overlay", device!=""})
           ) * 100 > 80
         for: 5m
         labels:
@@ -214,11 +214,12 @@ groups:
 
       # ------------------------------------------------------------------------
       # Alert: CriticalDiskSpace
+      # Fires when root filesystem (/) is more than 90% full for 2 minutes.
       # ------------------------------------------------------------------------
       - alert: CriticalDiskSpace
         expr: >
-          (1 - (node_filesystem_free_bytes{fstype!~"tmpfs|devtmpfs|overlay"}
-                / node_filesystem_size_bytes{fstype!~"tmpfs|devtmpfs|overlay"})
+          (1 - (node_filesystem_free_bytes{mountpoint="/", fstype!~"tmpfs|devtmpfs|overlay", device!=""}
+                / node_filesystem_size_bytes{mountpoint="/", fstype!~"tmpfs|devtmpfs|overlay", device!=""})
           ) * 100 > 90
         for: 2m
         labels:
@@ -233,12 +234,12 @@ groups:
 
       # ------------------------------------------------------------------------
       # Alert: DiskWillFillIn24Hours
-      # Predicts disk fill using linear regression over 6 hours
+      # Predicts root disk fill using linear regression over 6 hours
       # ------------------------------------------------------------------------
       - alert: DiskWillFillIn24Hours
         expr: >
           predict_linear(
-            node_filesystem_free_bytes{fstype!~"tmpfs|devtmpfs|overlay"}[6h],
+            node_filesystem_free_bytes{mountpoint="/", fstype!~"tmpfs|devtmpfs|overlay", device!=""}[6h],
             24 * 3600
           ) < 0
         for: 30m
