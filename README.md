@@ -1,534 +1,505 @@
-# 🛡️ SentinelOps — Server Monitoring & Alerting System
+# SentinelOps 🚀
+### A Containerized DevOps Monitoring & Observability Platform
 
-> A complete, beginner-friendly, production-ready monitoring stack built with Prometheus, Grafana, Node Exporter, and Alertmanager — all running in Docker on Ubuntu / WSL2.
+<p align="center">
+  <img src="https://img.shields.io/badge/Docker-Containerized-2496ED?logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/Prometheus-Monitoring-E6522C?logo=prometheus&logoColor=white" />
+  <img src="https://img.shields.io/badge/Grafana-Visualization-F46800?logo=grafana&logoColor=white" />
+  <img src="https://img.shields.io/badge/Alertmanager-Alerting-DC382D?logo=prometheus&logoColor=white" />
+  <img src="https://img.shields.io/badge/Docker%20Compose-Orchestration-2496ED?logo=docker&logoColor=white" />
+  <img src="https://img.shields.io/badge/Status-Implemented-success" />
+</p>
 
-[![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?logo=docker)](https://www.docker.com/)
-[![Prometheus](https://img.shields.io/badge/Prometheus-v2.51-E6522C?logo=prometheus)](https://prometheus.io/)
-[![Grafana](https://img.shields.io/badge/Grafana-v10.3-F46800?logo=grafana)](https://grafana.com/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
-
----
-
-## 📋 Table of Contents
-
-- [What Is This?](#-what-is-this)
-- [Architecture](#-architecture)
-- [Project Structure](#-project-structure)
-- [Tech Stack](#-tech-stack)
-- [Prerequisites](#-prerequisites)
-- [Environment Setup](#-environment-setup)
-- [Quick Start](#-quick-start)
-- [Accessing Services](#-accessing-services)
-- [Dashboard Panels](#-dashboard-panels)
-- [Alert Rules](#-alert-rules)
-- [Bash Scripts](#-bash-scripts)
-- [Common Commands](#-common-commands)
-- [Troubleshooting](#-troubleshooting)
-- [Security Practices](#-security-practices)
-- [Screenshots Checklist](#-screenshots-checklist)
-- [Next Steps](#-next-steps)
+<p align="center">
+  <b>Observe infrastructure. Detect anomalies. Respond with confidence.</b>
+</p>
 
 ---
 
-## 🤔 What Is This?
+## 📌 Overview
 
-SentinelOps answers the question every operations team asks:
+What happens when a system starts running out of memory? What if disk utilization suddenly increases or a monitored service becomes unavailable? More importantly, how can we identify these problems before they lead to service disruptions?
 
-> *"Is my server healthy right now — and will it stay that way?"*
+**SentinelOps** was built to explore and address these challenges.
 
-It automatically:
-- **Collects** CPU, memory, disk, and network metrics every 15 seconds
-- **Stores** that data for 15 days so you can spot trends
-- **Visualizes** everything in live Grafana dashboards
-- **Alerts** you when something goes wrong (CPU > 80%, disk > 90%, service down)
+SentinelOps is a containerized infrastructure monitoring and observability platform that collects system-level metrics, visualizes infrastructure performance, evaluates alert conditions and manages alerts through a centralized monitoring stack.
 
----
+Built using Docker Compose, Prometheus, Node Exporter, Grafana and Alertmanager, it provides real-time visibility into system health through interactive dashboards and configurable alert rules.
 
-## 🏗️ Architecture
+The goal was not simply to make monitoring dashboards, but to understand how monitoring systems collect data, identify abnormal conditions and communicate potential infrastructure problems.
 
-```
-┌──────────────────────────────────────────────────────────────────┐
-│                  Host (Ubuntu / WSL2 on Windows)                 │
-│                                                                  │
-│  ┌────────────────── Docker network: monitoring ───────────────┐ │
-│  │                                                              │ │
-│  │  ┌─────────────┐  scrapes    ┌────────────────────────┐    │ │
-│  │  │             │ ──────────► │    Node Exporter        │    │ │
-│  │  │  Prometheus │  every 15s  │    :9100                │    │ │
-│  │  │  :9090      │             │  reads /proc /sys /     │    │ │
-│  │  │             │ ◄── queries ─────────────────────────┐│    │ │
-│  │  │             │                                      ││    │ │
-│  │  │             │ ─ fires alerts ─► ┌──────────────┐  ││    │ │
-│  │  └─────────────┘                   │ Alertmanager │  ││    │ │
-│  │         ▲                          │ :9093        │  ││    │ │
-│  │         │ queries                  └──────────────┘  ││    │ │
-│  │  ┌─────────────┐                                     ││    │ │
-│  │  │   Grafana   │─────────────────────────────────────┘│    │ │
-│  │  │   :3000     │                                       │    │ │
-│  │  └─────────────┘                                       │    │ │
-│  └────────────────────────────────────────────────────────┘    │ │
-│                                                                  │
-│  Ports forwarded to Windows browser:                             │
-│  :3000 (Grafana)  :9090 (Prometheus)  :9093 (Alertmanager)      │
-│  :9100 (Node Exporter raw metrics)                               │
-└──────────────────────────────────────────────────────────────────┘
+## 🏗️ System Architecture
+
+```mermaid
+flowchart TB
+    subgraph INFRA["Infrastructure"]
+        HOST["Host System / WSL2"]
+        NE["Node Exporter"]
+        HOST --> NE
+    end
+
+    subgraph COLLECTION["Metrics Collection"]
+        PROM["Prometheus"]
+        NE -->|"Exposes system metrics"| PROM
+    end
+
+    subgraph OBSERVABILITY["Observability Layer"]
+        GRAFANA["Grafana Dashboards"]
+        RULES["Prometheus Alert Rules"]
+        PROM -->|"PromQL queries"| GRAFANA
+        PROM -->|"Evaluates conditions"| RULES
+    end
+
+    subgraph ALERTING["Alert Management"]
+        AM["Alertmanager"]
+        RULES -->|"Firing / Resolved alerts"| AM
+        AM --> ROUTES["Routing & Grouping"]
+        ROUTES --> EMAIL["Email Notification Receiver"]
+    end
+
+    USER["Administrator"]
+    GRAFANA --> USER
+    AM --> USER
 ```
 
-### Data Flow
+### Architecture workflow
 
-1. **Node Exporter** reads raw kernel data (`/proc`, `/sys`) and exposes metrics
-2. **Prometheus** scrapes Node Exporter every 15 s and stores in its time-series DB
-3. **Grafana** queries Prometheus via PromQL and renders live dashboards
-4. **Alertmanager** receives fired alerts from Prometheus and routes notifications
+1. **Node Exporter** exposes hardware and operating-system metrics.
+2. **Prometheus** periodically scrapes configured monitoring targets and stores time-series data.
+3. **Grafana** queries Prometheus using PromQL and displays system metrics through dashboards.
+4. **Prometheus Alert Rules** continuously evaluate defined conditions.
+5. **Alertmanager** receives firing and resolved alerts, groups them and routes them according to configured policies.
+6. **Email notification routing** can deliver notifications when SMTP configuration is supplied.
 
----
+## ✨ Key Features
 
-## 📁 Project Structure
+### 1. Infrastructure Monitoring
+- Real-time CPU utilization monitoring.
+- Memory consumption and available RAM.
+- Filesystem utilization and available disk space.
+- Disk read/write throughput.
+- Network receive and transmit traffic.
+- Network packet rates.
+- System uptime.
+- CPU cores and system load averages.
+- Process and file descriptor monitoring.
 
-```
-sentinelOps/
-├── .env                           # Your local secrets (gitignored — never commit)
-├── .env.example                   # Template — safe to commit, no real secrets
-├── .gitignore                     # Protects .env, logs, runtime data
-├── docker-compose.yml             # All 4 services — reads variables from .env
-├── Makefile                       # Shortcut commands (make up, make health, etc.)
-├── README.md                      # This file
-│
-├── prometheus/
-│   ├── prometheus.yml             # Scrape targets, Alertmanager endpoint
-│   ├── rules/
-│   │   └── alert_rules.yml        # 12 alert rules (CPU, RAM, disk, network)
-│   └── data/                      # TSDB storage — gitignored, Docker-managed
-│
-├── grafana/
-│   ├── provisioning/
-│   │   ├── datasources/
-│   │   │   └── prometheus.yml     # Auto-connects Grafana → Prometheus on startup
-│   │   └── dashboards/
-│   │       └── dashboard.yml      # Tells Grafana where to find dashboard JSON
-│   ├── dashboards/
-│   │   └── system_overview.json   # 24-panel system monitoring dashboard
-│   └── data/                      # Grafana DB — gitignored, Docker-managed
+### 2. Interactive Grafana Dashboard
+
+A centralized dashboard named **SentinelOps – System Overview** provides visibility into infrastructure health.
+
+| Monitoring area | Metrics |
+|---|---|
+| Service Availability | Node Exporter, Prometheus, Grafana, Alertmanager |
+| CPU | CPU usage, usage trends, CPU cores |
+| Memory | RAM usage, available memory, memory trends |
+| Disk | Disk utilization, free space, read/write throughput |
+| Network | Receive/transmit traffic, packet rates |
+| System | Uptime, load average, processes, file descriptors |
+
+The dashboard supports automatic refresh and historical metric visualization.
+
+### 3. Prometheus Alerting
+
+Configurable alert rules are organized into monitoring categories:
+
+- CPU alerts – High and critical CPU utilization.
+- Memory alerts – High memory consumption.
+- Disk alerts – Low disk space, critical disk space and disk capacity trends.
+- Service availability alerts – Detection of unavailable monitoring targets.
+
+Alerts support severity labels, descriptive annotations and configurable evaluation durations.
+
+### 4. Alertmanager Integration
+
+Alertmanager handles alerts received from Prometheus.
+
+Implemented capabilities include:
+- Warning and critical severity routing.
+- Alert grouping.
+- Notification receiver configuration.
+- Firing and resolved alert handling.
+- Configurable notification timing.
+- Email notification templates and SMTP environment-variable configuration.
+
+Actual email delivery requires valid SMTP credentials and a successful delivery test.
+
+### 5. Containerized Infrastructure
+
+All core monitoring components are orchestrated through Docker Compose.
+
+Benefits:
+- Consistent service deployment.
+- Centralized configuration.
+- Container health checks.
+- Dedicated monitoring network.
+- Persistent storage for monitoring data.
+- Easier startup, shutdown and maintenance.
+
+### 6. Monitoring Accuracy & Troubleshooting
+
+During development, disk-space alerts were incorrectly triggered by irrelevant WSL2 filesystem mountpoints.
+
+Instead of disabling the alerts, the filesystem filtering in the Prometheus alert expressions was corrected to monitor the intended root filesystem.
+
+This eliminated the identified false positives while preserving disk monitoring.
+
+## 🛠️ Technology Stack
+
+| Technology | Purpose |
+|---|---|
+| Docker | Containerization |
+| Docker Compose | Multi-container orchestration |
+| Prometheus | Metrics collection and time-series storage |
+| Node Exporter | Host system metrics |
+| Grafana | Monitoring dashboards and visualization |
+| Alertmanager | Alert grouping, routing and notifications |
+| PromQL | Metrics querying and alert expressions |
+| YAML | Infrastructure and monitoring configuration |
+| Bash | Utility and health-check scripts |
+| Git & GitHub | Version control and project hosting |
+
+## 📂 Project Structure
+
+```text
+sentinalOps/
 │
 ├── alertmanager/
-│   ├── alertmanager.yml           # Routing tree, inhibitions, receivers
-│   └── data/                      # Alert state — gitignored, Docker-managed
+│   ├── alertmanager.yml
+│   └── templates/
+│
+├── grafana/
+│   ├── dashboards/
+│   └── provisioning/
+│
+├── prometheus/
+│   ├── prometheus.yml
+│   └── rules/
+│       └── alert_rules.yml
 │
 ├── scripts/
-│   ├── setup.sh                   # Automated prerequisite check and deploy
-│   ├── health_check.sh            # Verify all 4 services are healthy
-│   ├── monitor.sh                 # Real-time terminal system monitor
-│   ├── alert_receiver.sh          # Simple webhook listener for Alertmanager
-│   ├── check_targets.py           # Python: query Prometheus targets API
-│   ├── check_grafana.py           # Python: verify Grafana dashboards via API
-│   ├── validate_queries.py        # Python: validate all 27 dashboard PromQL queries
-│   └── deploy_dashboard.py        # Python: push dashboard JSON to Grafana API
+│   └── health_check.sh
 │
-└── logs/                          # Script output — gitignored
+├── .env.example
+├── .gitignore
+├── Makefile
+├── docker-compose.yml
+└── README.md
 ```
 
----
+*The tree represents the intended organization of the repository. Refer to the actual repository for the complete file list.*
 
-## 🛠️ Tech Stack
+## ⚙️ Getting Started
 
-| Tool | Version | Role |
-|------|---------|------|
-| **Docker** | 24+ | Container runtime |
-| **Docker Compose** | V2 | Multi-service orchestration |
-| **Prometheus** | 2.51 | Metrics collection and storage |
-| **Node Exporter** | 1.7 | Linux hardware/OS metrics exporter |
-| **Grafana** | 10.3 | Visualization and dashboards |
-| **Alertmanager** | 0.27 | Alert routing and notifications |
-| **Bash** | 5+ | Automation scripts |
+### Prerequisites
 
----
+Install the following:
 
-## ✅ Prerequisites
+- Docker Desktop
+- Docker Compose
+- Git
+- WSL2 with Ubuntu (recommended for the Windows development environment)
 
-### Check if Docker is installed
+Verify your installations:
 
 ```bash
 docker --version
 docker compose version
+git --version
 ```
 
-### Install Docker in WSL2 (if not present)
+### 1. Clone the repository
 
 ```bash
-curl -fsSL https://get.docker.com -o get-docker.sh
-sudo sh get-docker.sh
-sudo usermod -aG docker $USER
-newgrp docker
+git clone https://github.com/Chethana45/sentinalOps.git
 ```
 
-### Start Docker daemon
+Navigate into the project:
 
 ```bash
-sudo service docker start
-docker info   # should show server info without errors
+cd sentinalOps
 ```
 
----
+### 2. Configure environment variables
 
-## 🔐 Environment Setup
-
-> **Security rule:** Real credentials go in `.env` (gitignored). Only `.env.example` is committed.
-
-### Step 1 — Copy the template
+Create your local environment file:
 
 ```bash
-cd ~/path/to/sentinelOps
 cp .env.example .env
 ```
 
-### Step 2 — Edit your local `.env`
+On Windows PowerShell, you can use:
 
-Open `.env` in any editor and set values:
-
-```bash
-nano .env
+```powershell
+Copy-Item .env.example .env
 ```
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GRAFANA_ADMIN_USER` | `admin` | Grafana login username |
-| `GRAFANA_ADMIN_PASSWORD` | *(must set)* | Grafana login password |
-| `GRAFANA_PORT` | `3000` | Host port for Grafana |
-| `PROMETHEUS_PORT` | `9090` | Host port for Prometheus |
-| `ALERTMANAGER_PORT` | `9093` | Host port for Alertmanager |
-| `NODE_EXPORTER_PORT` | `9100` | Host port for Node Exporter |
-| `PROMETHEUS_RETENTION_TIME` | `15d` | How long metrics are kept |
-| `ALERT_EMAIL_TO` | *(blank)* | Destination email address for alert notifications |
-| `SMTP_HOST` | *(blank)* | SMTP server hostname (e.g. `smtp.gmail.com`) |
-| `SMTP_PORT` | `587` | SMTP port (e.g. `587` for STARTTLS) |
-| `SMTP_USERNAME` | *(blank)* | SMTP account username or email address |
-| `SMTP_PASSWORD` | *(blank)* | SMTP account password or 16-character App Password |
-| `SMTP_FROM` | *(blank)* | Sender email address (e.g. `alerts@yourdomain.com`) |
-| `SLACK_WEBHOOK_URL` | *(blank)* | Optional: Slack webhook for alerts |
+Edit `.env` and provide appropriate local configuration values.
 
-> **Important:** If `SMTP_*` variables are left empty, email alerting remains gracefully disabled, and alerts route exclusively to local webhooks. The stack starts and runs reliably in either mode.
+Example variables:
 
-### How to Enable Email Notifications:
+```env
+COMPOSE_PROJECT_NAME=sentinelops
 
-1. Configure your SMTP settings in `.env`:
-   ```bash
-   ALERT_EMAIL_TO=oncall@example.com
-   SMTP_HOST=smtp.gmail.com
-   SMTP_PORT=587
-   SMTP_USERNAME=alerts@example.com
-   SMTP_PASSWORD=your-16-char-app-password
-   SMTP_FROM=alerts@example.com
-   ```
-2. Render and apply the updated Alertmanager configuration:
-   ```bash
-   bash scripts/generate_alertmanager_config.sh
-   curl -X POST http://localhost:9093/-/reload
-   ```
-3. Critical alerts (`InstanceDown`, `CriticalCpuUsage`, `CriticalMemoryUsage`, `CriticalDiskSpace`) are emailed immediately to `ALERT_EMAIL_TO` with repeat intervals of 1h.
-4. Warning alerts (`HighCpuUsage`, `HighMemoryUsage`, `LowDiskSpace`, etc.) are grouped and emailed with repeat intervals of 4h.
+GRAFANA_ADMIN_USER=admin
+GRAFANA_ADMIN_PASSWORD=CHANGE_ME
 
-### Step 3 — Verify `.env` is gitignored
+GRAFANA_PORT=3000
+PROMETHEUS_PORT=9090
+ALERTMANAGER_PORT=9093
+NODE_EXPORTER_PORT=9100
 
-```bash
-git check-ignore -v .env          # should print: .gitignore:6:.env
-git check-ignore -v .env.example  # should print nothing (not ignored — correct)
+PROMETHEUS_RETENTION_TIME=15d
+
+SMTP_HOST=
+SMTP_PORT=587
+SMTP_USERNAME=
+SMTP_PASSWORD=
+SMTP_FROM=
+ALERT_EMAIL_TO=
 ```
 
----
+Use the actual variable names defined in the repository's `.env.example` and Docker Compose configuration. Do not commit your `.env` file.
 
-## 🚀 Quick Start
+### 3. Start the monitoring stack
 
 ```bash
-# 1. Navigate to project
-cd /mnt/c/Users/yourname/sentinelOps   # WSL2 path to Windows Desktop
-
-# 2. Copy and configure environment
-cp .env.example .env
-nano .env   # set GRAFANA_ADMIN_PASSWORD at minimum
-
-# 3. Make scripts executable
-chmod +x scripts/*.sh
-
-# 4. Start the stack
 docker compose up -d
+```
 
-# 5. Verify all containers are healthy
+Check running containers:
+
+```bash
 docker compose ps
-bash scripts/health_check.sh
 ```
 
----
-
-## 🌐 Accessing Services
-
-Once running, open these in your **Windows browser** (WSL2 ports forward automatically):
-
-| Service | URL | Credentials |
-|---------|-----|-------------|
-| **Grafana** | http://localhost:3000 | `admin` / *(your .env password)* |
-| **Prometheus** | http://localhost:9090 | None required |
-| **Alertmanager** | http://localhost:9093 | None required |
-| **Node Exporter** | http://localhost:9100/metrics | None required |
-
-### Key Prometheus pages
-
-| Page | URL | What to check |
-|------|-----|---------------|
-| Targets | http://localhost:9090/targets | All 4 should be green (UP) |
-| Alerts | http://localhost:9090/alerts | Active alert rules |
-| Graph | http://localhost:9090/graph | Run PromQL queries manually |
-| Config | http://localhost:9090/config | Active Prometheus configuration |
-| Rules  | http://localhost:9090/rules  | All 12 loaded alert rules |
-
----
-
-## 📊 Dashboard Panels
-
-Navigate to: **Grafana → Dashboards → SentinelOps → SentinelOps - System Overview**
-
-Or directly: `http://localhost:3000/d/sentinelops-system-overview`
-
-| Section | Panels | PromQL Used |
-|---------|--------|-------------|
-| **Service Availability** | Node Exporter UP/DOWN, Prometheus UP/DOWN, Alertmanager UP/DOWN, Grafana UP/DOWN, System Uptime, CPU Cores | `up{job="..."}`, `node_time_seconds - node_boot_time_seconds` |
-| **CPU** | Usage % gauge, Time series (total/user/system/iowait/load1/load5) | `100 - avg(rate(node_cpu_seconds_total{mode="idle"}[5m])) * 100` |
-| **Memory** | RAM % gauge, Available stat, Time series (used/cache/available/swap) | `(1 - node_memory_MemAvailable_bytes/node_memory_MemTotal_bytes)*100` |
-| **Disk** | Usage % gauge, Free space stat, I/O read/write graph | `node_filesystem_free_bytes{mountpoint="/"}` |
-| **Network** | Per-interface receive/transmit, Packet rate | `rate(node_network_receive_bytes_total[5m])` |
-| **System Load** | Load avg vs CPU cores, Processes + file descriptors | `node_load1`, `node_procs_running` |
-
-### Color thresholds
-
-| Metric | Yellow | Orange | Red |
-|--------|--------|--------|-----|
-| CPU | 60% | 80% | 90% |
-| Memory | 60% | 80% | 90% |
-| Disk | 70% | 80% | 90% |
-
----
-
-## 🚨 Alert Rules (12 rules)
-
-Located in [`prometheus/rules/alert_rules.yml`](prometheus/rules/alert_rules.yml)
-
-| Alert | Condition | Duration | Severity |
-|-------|-----------|----------|----------|
-| `InstanceDown` | `up == 0` | 1m | critical |
-| `NodeExporterDown` | absent(node-exporter) | 1m | critical |
-| `HighCpuUsage` | CPU > 80% | 5m | warning |
-| `CriticalCpuUsage` | CPU > 95% | 2m | critical |
-| `HighMemoryUsage` | RAM > 85% | 5m | warning |
-| `CriticalMemoryUsage` | RAM > 95% | 2m | critical |
-| `SwapUsageHigh` | Swap > 80% | 5m | warning |
-| `LowDiskSpace` | Disk > 80% | 5m | warning |
-| `CriticalDiskSpace` | Disk > 90% | 2m | critical |
-| `DiskWillFillIn24Hours` | linear_predict fill < 24h | 30m | warning |
-| `HighNetworkReceive` | Receive > 100 MB/s | 5m | warning |
-| `HighSystemLoad` | load15 > 1.5× cores | 10m | warning |
-
----
-
-## 📜 Bash Scripts
+View service logs:
 
 ```bash
-# Full setup (validates prerequisites, starts stack)
-bash scripts/setup.sh
-
-# Check all 4 services are healthy
-bash scripts/health_check.sh
-
-# Real-time terminal system monitor
-bash scripts/monitor.sh                # refresh every 5s
-bash scripts/monitor.sh --interval 2  # refresh every 2s
-bash scripts/monitor.sh --once        # print once and exit
-
-# Start the webhook alert receiver (logs alerts to logs/alerts.log)
-bash scripts/alert_receiver.sh
-```
-
-### Python diagnostic scripts
-
-```bash
-# Check Prometheus targets and live metric samples
-python3 scripts/check_targets.py
-
-# Check Grafana datasources and dashboards via API
-python3 scripts/check_grafana.py
-
-# Validate all 27 dashboard PromQL queries return real data
-python3 scripts/validate_queries.py
-
-# Push dashboard JSON to Grafana (idempotent — safe to re-run)
-python3 scripts/deploy_dashboard.py
-```
-
----
-
-## 📌 Common Commands
-
-```bash
-# Start / Stop / Restart
-docker compose up -d
-docker compose down
-docker compose restart
-
-# Status
-docker compose ps
-docker stats --no-stream
-
-# Logs
 docker compose logs -f
+```
+
+View logs for a specific service:
+
+```bash
 docker compose logs -f prometheus
 docker compose logs -f grafana
-docker compose logs --tail=100 alertmanager
-
-# Config validation (run before restarting!)
-docker compose config --quiet
-docker exec sentinelops-prometheus promtool check config /etc/prometheus/prometheus.yml
-docker exec sentinelops-prometheus promtool check rules /etc/prometheus/rules/alert_rules.yml
-
-# Hot-reload Prometheus config (no container restart needed)
-curl -X POST http://localhost:9090/-/reload
-
-# Open a shell in a container
-docker exec -it sentinelops-prometheus sh
-docker exec -it sentinelops-grafana bash
-
-# Makefile shortcuts
-make up
-make down
-make ps
-make logs
-make health
-make monitor
-make reload-prometheus
-make validate
+docker compose logs -f alertmanager
+docker compose logs -f node-exporter
 ```
+
+### 4. Access the services
+
+Once the containers are running, open the following URLs:
+
+| Service | URL |
+|---|---|
+| Grafana | http://localhost:3000 |
+| Prometheus | http://localhost:9090 |
+| Prometheus Targets | http://localhost:9090/targets |
+| Prometheus Alerts | http://localhost:9090/alerts |
+| Alertmanager | http://localhost:9093 |
+| Node Exporter Metrics | http://localhost:9100/metrics |
+
+Grafana credentials are configured using the environment variables in your local `.env` file.
+
+### 5. Stop the monitoring stack
+
+```bash
+docker compose down
+```
+
+To stop the stack and remove its named volumes, use:
+
+```bash
+docker compose down -v
+```
+
+**Warning:** The second command deletes persisted monitoring data. Use it only when you intentionally want to reset the environment.
+
+## 📊 PromQL Examples
+
+Some of the PromQL expressions used for system monitoring:
+
+### CPU Utilization
+
+```promql
+100 * (
+  1 - avg by(instance) (
+    rate(node_cpu_seconds_total{mode="idle"}[5m])
+  )
+)
+```
+
+### Memory Utilization
+
+```promql
+100 * (
+  1 -
+  node_memory_MemAvailable_bytes /
+  node_memory_MemTotal_bytes
+)
+```
+
+### Available Memory
+
+```promql
+node_memory_MemAvailable_bytes
+```
+
+### Disk Utilization – Root Filesystem
+
+```promql
+100 * (
+  1 -
+  (
+    node_filesystem_free_bytes{
+      mountpoint="/",
+      fstype!~"tmpfs|devtmpfs|overlay",
+      device!=""
+    }
+    /
+    node_filesystem_size_bytes{
+      mountpoint="/",
+      fstype!~"tmpfs|devtmpfs|overlay",
+      device!=""
+    }
+  )
+)
+```
+
+### Network Receive Rate
+
+```promql
+rate(node_network_receive_bytes_total[5m])
+```
+
+### Network Transmit Rate
+
+```promql
+rate(node_network_transmit_bytes_total[5m])
+```
+
+### System Uptime
+
+```promql
+time() - node_boot_time_seconds
+```
+
+### Target Availability
+
+```promql
+up
+```
+
+Metric labels and filesystem filters may need adjustment depending on the host environment.
+
+## 🔔 Alerting Workflow
+
+SentinelOps uses Prometheus and Alertmanager to manage infrastructure alerts.
+
+```mermaid
+sequenceDiagram
+    participant NE as Node Exporter
+    participant P as Prometheus
+    participant R as Alert Rules
+    participant AM as Alertmanager
+    participant N as Notification Receiver
+
+    NE->>P: Expose system metrics
+    P->>P: Scrape and store metrics
+    P->>R: Evaluate alert expressions
+    R->>P: Alert condition detected
+    P->>AM: Send firing alert
+    AM->>AM: Group and route alert
+    AM->>N: Send configured notification
+    P->>AM: Send resolved alert
+```
+
+### Example alert scenarios
+
+| Scenario | Severity |
+|---|---|
+| High CPU utilization | Warning |
+| Critical CPU utilization | Critical |
+| High memory utilization | Warning |
+| Low disk space | Warning |
+| Critical disk space | Critical |
+| Monitoring target unavailable | Critical |
+
+Thresholds and evaluation durations are defined in the Prometheus rule configuration.
+
+## 🧪 Validation & Testing
+
+The monitoring environment was validated through:
+
+- Docker Compose configuration validation.
+- Container startup and health checks.
+- Prometheus target availability checks.
+- Grafana dashboard verification.
+- Live CPU, RAM, disk and network metric visualization.
+- Prometheus alert rule evaluation.
+- Disk alert filesystem-filtering correction.
+- Alertmanager integration inspection.
+- Alert lifecycle testing and cleanup.
+
+The final observed Prometheus alert state during development was 12 inactive alerts, 0 pending alerts and 0 firing alerts.
+
+## 🔐 Security Considerations
+
+- Keep `.env` out of version control.
+- Use `.env.example` for placeholder configuration.
+- Never commit SMTP passwords or administrator credentials.
+- Use strong Grafana administrator credentials.
+- Restrict access to monitoring endpoints in production.
+- Avoid exposing Prometheus and Node Exporter publicly without appropriate access controls.
+- Use Docker secrets or a secure secret manager for production deployments.
+- Rotate credentials if they have ever been exposed.
+
+## 🧠 What I Learned
+
+Building SentinelOps helped me gain practical experience in:
+
+- Containerization and Docker Compose orchestration.
+- Infrastructure monitoring and observability concepts.
+- Prometheus metrics collection and time-series monitoring.
+- Writing PromQL queries.
+- Building Grafana dashboards.
+- Designing alert rules and managing alert severity.
+- Alertmanager routing and notification configuration.
+- Debugging false-positive alerts.
+- Working with WSL2 and Docker Desktop.
+- Managing infrastructure configuration using YAML and environment variables.
+
+One of my biggest takeaways was that a monitoring system is only useful when its alerts are accurate. Troubleshooting false positives was just as important as implementing the monitoring stack itself.
+
+## 🚀 Future Enhancements
+
+Potential extensions for SentinelOps include:
+
+- Cloud infrastructure monitoring.
+- Kubernetes monitoring.
+- Custom application metrics.
+- Centralized log aggregation using Loki.
+- Distributed tracing using OpenTelemetry.
+- CI/CD integration.
+- Infrastructure provisioning with Terraform.
+- Advanced anomaly detection.
+
+## 👩‍💻 Author
+
+**Chethana Sri**
+
+BE Computer Science Engineering  
+Madras Institute of Technology, Anna University
+
+- GitHub: [@Chethana45](https://github.com/Chethana45)
+- Project: [SentinelOps](https://github.com/Chethana45/sentinalOps)
 
 ---
 
-## 🔧 Troubleshooting
-
-### Docker daemon not running
-```bash
-sudo service docker start
-docker info
-```
-
-### Port already in use
-```bash
-sudo lsof -i :3000          # find what's using port 3000
-sudo kill -9 <PID>
-# OR change the port in .env: GRAFANA_PORT=3001
-```
-
-### Grafana shows "No data" on panels
-```bash
-# 1. Confirm Prometheus is healthy
-curl http://localhost:9090/-/healthy
-
-# 2. Confirm targets are up
-curl -s http://localhost:9090/api/v1/targets | python3 -m json.tool | grep health
-
-# 3. Test a query manually in browser
-# http://localhost:9090/graph  →  query: up
-
-# 4. Verify datasource in Grafana
-# Connections → Data sources → Prometheus → Save & Test
-```
-
-### GRAFANA_ADMIN_PASSWORD error on startup
-```bash
-# docker compose will refuse to start if this is unset
-# Make sure .env exists and contains GRAFANA_ADMIN_PASSWORD=something
-cat .env | grep GRAFANA
-```
-
-### Dashboard not loading after container restart
-```bash
-# Provisioning should load it automatically. Check Grafana logs:
-docker compose logs grafana | grep -i provision
-
-# If dashboard is missing, re-push it:
-python3 scripts/deploy_dashboard.py
-```
-
-### Prometheus config error
-```bash
-# Validate BEFORE reloading
-docker exec sentinelops-prometheus promtool check config /etc/prometheus/prometheus.yml
-# If valid, reload without restart:
-curl -X POST http://localhost:9090/-/reload
-```
-
-### Full reset (last resort — deletes all metric history)
-```bash
-docker compose down --volumes --remove-orphans
-docker compose up -d
-```
-
----
-
-## 🔒 Security Practices
-
-| Practice | Implementation |
-|----------|---------------|
-| **No hardcoded credentials** | All passwords in `.env`, referenced via `${VAR}` in docker-compose.yml |
-| **`.env` gitignored** | Listed in `.gitignore` — never accidentally committed |
-| **`.env.example` committed** | Contains only placeholders, safe to share |
-| **Mandatory password check** | `${GRAFANA_ADMIN_PASSWORD:?...}` syntax — compose refuses to start if unset |
-| **No anonymous Grafana access** | `GF_AUTH_ANONYMOUS_ENABLED=false` |
-| **No public registration** | `GF_USERS_ALLOW_SIGN_UP=false` |
-| **Read-only config mounts** | All config files mounted with `:ro` |
-| **Private Docker network** | All inter-service traffic stays on the `monitoring` bridge network |
-| **SMTP optional** | Empty `SMTP_*` vars disable email — deployment never breaks without it |
-
-### ⚠️ Secret Rotation Notice
-
-This project was initialized **without a git repository**, so no credentials have ever been committed to git history. When you run `git init` and push to GitHub:
-
-1. Confirm `.gitignore` is in place **before** `git add`
-2. Run `git check-ignore -v .env` to verify it's excluded
-3. Only then run `git add . && git commit`
-4. Never run `git add .env` explicitly
-
----
-
-## 📸 Screenshots Checklist
-
-- [ ] `docker compose ps` — all 4 containers `healthy`
-- [ ] `bash scripts/health_check.sh` — all green
-- [ ] Grafana login page — http://localhost:3000
-- [ ] Dashboard — **SentinelOps - System Overview** with all panels showing data
-- [ ] Prometheus targets — http://localhost:9090/targets — all 4 UP
-- [ ] Prometheus graph — run `up` query
-- [ ] Prometheus alerts — http://localhost:9090/alerts — 12 rules loaded
-- [ ] Alertmanager — http://localhost:9093
-- [ ] `bash scripts/monitor.sh --once` — terminal stats
-- [ ] `python3 scripts/validate_queries.py` — 27/27 PASS
-
----
-
-## 🚀 Next Steps
-
-### Beginner
-- [ ] Configure email alerts (fill in `SMTP_*` vars in `.env`, update `alertmanager.yml`)
-- [ ] Add Slack notifications (`SLACK_WEBHOOK_URL` in `.env`)
-- [ ] Import the [Node Exporter Full](https://grafana.com/grafana/dashboards/1860) community dashboard (ID 1860)
-- [ ] Initialise git: `git init && git add . && git commit -m "Initial SentinelOps setup"`
-
-### Intermediate
-- [ ] Add **cAdvisor** to monitor Docker container resource usage
-- [ ] Add **Loki + Promtail** for log aggregation
-- [ ] Add **Blackbox Exporter** to monitor external URLs
-- [ ] Set up Grafana alerting (in addition to Alertmanager)
-
-### Advanced
-- [ ] Deploy to a cloud VM (AWS EC2, DigitalOcean Droplet, GCP)
-- [ ] Add **Thanos** for long-term Prometheus storage
-- [ ] Add **Kubernetes** monitoring with kube-state-metrics
-- [ ] GitOps: store configs in Git, auto-apply on push
-
----
-
-*Built as a complete DevOps learning project. All configurations validated against live services.*
+<p align="center">
+  <b>Built to understand infrastructure, not just monitor it.</b>
+  <br/>
+  If you find this project useful, consider giving the repository a ⭐
+</p>
